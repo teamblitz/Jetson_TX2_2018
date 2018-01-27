@@ -1,5 +1,6 @@
-#include "cscore.h"
-#include "networktables/NetworkTable.h"
+#include <cscore.h>
+#include <ntcore.h>
+#include <networktables/NetworkTable.h>
 #include <opencv2/core/core.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
 #include <opencv2/highgui/highgui.hpp>
@@ -14,11 +15,11 @@ using namespace cv;
 using namespace grip;
 using namespace llvm;
 
-// Code conditionals.
-#define USE_CAMERA_INPUT            0   // 1
-#define RESTREAM_VIDEO              1   // 1
+// Code conditionals.                   // Defaults
+#define USE_CAMERA_INPUT            1   // 1
+#define RESTREAM_VIDEO              0   // 1
 #define USE_CONTOUR_DETECTION       1   // 1   vs. 0 ==  simple blob detection
-#define VIEW_OUTPUT_ON_DISPLAY      0   // 0
+#define VIEW_OUTPUT_ON_DISPLAY      1   // 0
 #define NON_ROBOT_NETWORK_TABLES    0   // 0
 #define MEASURE_PERFORMANCE         1   // 0
 
@@ -86,7 +87,10 @@ void keyPointToPointsAndRect(KeyPoint const& keyPoint,
                              vector<Point>& points,
                              Rect& rect);
 
-int main(int argc, char** argv)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+
+int main(__attribute__((unused)) int argc, char** argv)
 {
     cout << argv[0] << " running..." << endl;
 #if MEASURE_PERFORMANCE
@@ -106,7 +110,7 @@ int main(int argc, char** argv)
 
 #if USE_CAMERA_INPUT
     // Open USB camera on port 0.
-    VideoCapture input(0);
+    VideoCapture input(1);
     if (!input.isOpened())
     {
         cerr << "ERROR: Failed to open camera!" << endl;
@@ -135,7 +139,7 @@ int main(int argc, char** argv)
 #endif
 
     SimpleBlobDetector::Params params = getSimpleBlobDetectorParams();
-    SimpleBlobDetector blobDetector(params);
+    Ptr<SimpleBlobDetector> blobDetector = SimpleBlobDetector::create(params);
 
     // Analytics.
     double minArea = 1000000;
@@ -361,7 +365,7 @@ void runContourDetectionPipeline(Mat const& frame,
     TICK_ACCUMULATOR_END(filter);
 }
 
-void runBlobDetectionPipeline(SimpleBlobDetector const& detector,
+void runBlobDetectionPipeline(SimpleBlobDetector & detector,
                               Mat const& frame,
                               vector<vector<Point>>& hits,
                               vector<Rect>& hitRects,
@@ -691,3 +695,6 @@ void keyPointToPointsAndRect(KeyPoint const& keyPoint,
     rect.width = keyPoint.size;
     rect.height = keyPoint.size;
 }
+
+#pragma GCC diagnostic pop
+
