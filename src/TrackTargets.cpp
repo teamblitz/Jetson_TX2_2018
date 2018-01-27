@@ -16,12 +16,14 @@ using namespace grip;
 using namespace llvm;
 
 // Code conditionals.                   // Defaults
-#define USE_CAMERA_INPUT            1   // 1
+#define USE_CAMERA_INPUT            1   // 1   0 == Use test video from a file below, 1 == Use an attached video camera.
+#define CAMERA_PORT                 0   // 1   0 == Jetson TX2 On-Board Camera, 1 == USB Cameraa.
 #define RESTREAM_VIDEO              0   // 1
-#define USE_CONTOUR_DETECTION       1   // 1   vs. 0 ==  simple blob detection
+#define USE_CONTOUR_DETECTION       1   // 1   0 == Simple blob detection, 1 == Contour detection.
 #define VIEW_OUTPUT_ON_DISPLAY      1   // 0
 #define NON_ROBOT_NETWORK_TABLES    0   // 0
-#define MEASURE_PERFORMANCE         1   // 0
+#define DUMP_OPENCV_BUILD_INFO      0   // 0   1 == Output OpenCV build info when started.
+#define MEASURE_PERFORMANCE         1   // 0   1 == Output timing measurements when running.
 
 // Performance macros.
 map<string, int64> ticks;
@@ -92,6 +94,9 @@ void keyPointToPointsAndRect(KeyPoint const& keyPoint,
 
 int main(__attribute__((unused)) int argc, char** argv)
 {
+	// Dump OpenCV build info.
+	std::cout << cv::getBuildInformation() << std::endl;
+
     cout << argv[0] << " running..." << endl;
 #if MEASURE_PERFORMANCE
     auto startTicks = getTickCount();
@@ -109,9 +114,14 @@ int main(__attribute__((unused)) int argc, char** argv)
 #endif
 
 #if USE_CAMERA_INPUT
-    // Open USB camera on port 0.
-    VideoCapture input(1);
-    if (!input.isOpened())
+    // Open USB camera.
+#if CAMERA_PORT == 0
+	VideoCapture input("nvcamerasrc ! video/x-raw(memory:NVMM), width=(int)1280, height=(int)720,format=(string)I420, framerate=(fraction)24/1 ! nvvidconv flip-method=0 ! video/x-raw, format=(string)BGRx ! videoconvert ! video/x-raw, format=(string)BGR ! appsink");
+#else
+    VideoCapture input(CAMERA_PORT);
+#endif
+    
+	if (!input.isOpened())
     {
         cerr << "ERROR: Failed to open camera!" << endl;
         cout << "Make sure that there are no other instances of this program already running!" << endl;
