@@ -19,7 +19,7 @@ using namespace llvm;
 #define USE_CAMERA_INPUT            1   // 1   0 == Use test video from a file below, 1 == Use an attached video camera.
 #define CAMERA_PORT                 1   // 1   0 == Jetson TX2 On-Board Camera, 1 == USB Cameraa.
 #define RESTREAM_VIDEO              0   // 1
-#define USE_CONTOUR_DETECTION       0   // 1   0 == Simple blob detection, 1 == Contour detection.
+#define USE_CONTOUR_DETECTION       1   // 1   0 == Simple blob detection, 1 == Contour detection.
 #define VIEW_OUTPUT_ON_DISPLAY      1   // 0
 #define NON_ROBOT_NETWORK_TABLES    1   // 0
 #define OUTLINE_VIEWER_IP_ADDRESS	"10.100.196.89"
@@ -52,14 +52,14 @@ void runBlobDetectionPipeline(Ptr<SimpleBlobDetector> const& detector,
                               vector<Rect>& hitRects,
                               vector<vector<Point>>& skips);
 
-void filterKeyPoints(vector<KeyPoint> const& keypoints,
+void processKeyPoints(vector<KeyPoint> const& keypoints,
+                      vector<vector<Point>>& hits,
+                      vector<Rect>& hitRects,
+                      vector<vector<Point>>& skips);
+void processContours(vector<vector<Point>> const& contours,
                      vector<vector<Point>>& hits,
                      vector<Rect>& hitRects,
                      vector<vector<Point>>& skips);
-void filterContours(vector<vector<Point>> const& contours,
-                    vector<vector<Point>>& hits,
-                    vector<Rect>& hitRects,
-                    vector<vector<Point>>& skips);
 
 SimpleBlobDetector::Params getSimpleBlobDetectorParams();
 void hslThreshold(Mat const& input,
@@ -367,7 +367,7 @@ void runContourDetectionPipeline(Mat const& frame,
     TICK_ACCUMULATOR_END(filtered_contours);
 
     TICK_ACCUMULATOR_START(filter);
-    filterContours(filteredContours, hits, hitRects, skips);
+    processContours(filteredContours, hits, hitRects, skips);
     TICK_ACCUMULATOR_END(filter);
 }
 
@@ -382,10 +382,10 @@ void runBlobDetectionPipeline(Ptr<SimpleBlobDetector> const& detector,
 //    medianBlur(frame, blurredFrame, 11);
 //    TICK_ACCUMULATOR_END(blur);
     
-    TICK_ACCUMULATOR_START(threshold);
-    Mat thresholdFrame;
-    threshold(frame, thresholdFrame, 200, 255, CV_THRESH_BINARY);
-    TICK_ACCUMULATOR_END(threshold);
+//     TICK_ACCUMULATOR_START(threshold);
+//     Mat thresholdFrame;
+//     threshold(frame, thresholdFrame, 200, 255, CV_THRESH_BINARY);
+//     TICK_ACCUMULATOR_END(threshold);
 
     TICK_ACCUMULATOR_START(detect);
     vector<KeyPoint> keyPoints;
@@ -398,7 +398,7 @@ void runBlobDetectionPipeline(Ptr<SimpleBlobDetector> const& detector,
     TICK_ACCUMULATOR_END(sort);
 
     TICK_ACCUMULATOR_START(filter);
-    filterKeyPoints(keyPoints, hits, hitRects, skips);
+    processKeyPoints(keyPoints, hits, hitRects, skips);
     TICK_ACCUMULATOR_END(filter);
 }
 
@@ -409,10 +409,10 @@ void runBlobDetectionPipeline(Ptr<SimpleBlobDetector> const& detector,
  * in the "hits" vector. Any keypoints skipped will be
  * returned in the "skips" vector.
  */
-void filterKeyPoints(vector<KeyPoint> const& keyPoints,
-                     vector<vector<Point>>& hits,
-                     vector<Rect>& hitRects,
-                     vector<vector<Point>>& skips)
+void processKeyPoints(vector<KeyPoint> const& keyPoints,
+                      vector<vector<Point>>& hits,
+                      vector<Rect>& hitRects,
+                      vector<vector<Point>>& skips)
 {
     if (keyPoints.size() == 0)
     {
@@ -420,7 +420,7 @@ void filterKeyPoints(vector<KeyPoint> const& keyPoints,
         return;
     }
 
-	// One or more keypoints were detected and, since they are sorted,
+	// One or more keypoints was detected and, since they are sorted,
 	// return the data for the first (largest) keypoint as a hit.
 	vector<Point> hitPoints;
 	Rect hitRect;
@@ -444,26 +444,23 @@ void filterKeyPoints(vector<KeyPoint> const& keyPoints,
 /**
  * Filter the contours...
  */
-void filterContours(vector<vector<Point>> const& contours,
-                    vector<vector<Point>>& hits,
-                    vector<Rect>& hitRects,
-                    vector<vector<Point>>& skips)
+void processContours(vector<vector<Point>> const& contours,
+                     vector<vector<Point>>& hits,
+                     vector<Rect>& hitRects,
+                     vector<vector<Point>>& skips)
 {
     if (contours.size() == 0)
     {
+    	// No contours found in frame.
         return;
     }
 
-    if (contours.size() == 1)
-    {
-        skips.push_back(*(contours.begin()));
-        return;
-    }
-
-    for (auto iter = contours.begin(); iter != contours.end()-1; iter++)
+	// One or more contours was detected. Find the best candidate for a hit
+	// and return the rest as skips.
+    for (auto iter = contours.begin(); iter != contours.end(); iter++)
     {
         Rect rect = boundingRect(*iter);
-        if (rect.height < 1 * rect.width || rect.height > 10 * rect.width)
+        if (rect.height < 5 * rect.width || rect.height > 10 * rect.width)
         {
 //            cout << "Skipping contour (aspect ratio)..." << endl;
             continue;
