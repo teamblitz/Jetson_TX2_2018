@@ -17,11 +17,12 @@ using namespace llvm;
 
 // Code conditionals.                   // Defaults
 #define USE_CAMERA_INPUT            1   // 1   0 == Use test video from a file below, 1 == Use an attached video camera.
-#define CAMERA_PORT                 0   // 1   0 == Jetson TX2 On-Board Camera, 1 == USB Cameraa.
+#define CAMERA_PORT                 1   // 1   0 == Jetson TX2 On-Board Camera, 1 == USB Cameraa.
 #define RESTREAM_VIDEO              0   // 1
-#define USE_CONTOUR_DETECTION       1   // 1   0 == Simple blob detection, 1 == Contour detection.
+#define USE_CONTOUR_DETECTION       0   // 1   0 == Simple blob detection, 1 == Contour detection.
 #define VIEW_OUTPUT_ON_DISPLAY      1   // 0
-#define NON_ROBOT_NETWORK_TABLES    0   // 0
+#define NON_ROBOT_NETWORK_TABLES    1   // 0
+#define OUTLINE_VIEWER_IP_ADDRESS	"10.100.196.89"
 #define DUMP_OPENCV_BUILD_INFO      0   // 0   1 == Output OpenCV build info when started.
 #define MEASURE_PERFORMANCE         1   // 0   1 == Output timing measurements when running.
 
@@ -36,7 +37,7 @@ map<string, int64> ticks;
 #endif
 
 // Constants.
-static const float FRAME_SCALE_FACTOR = 0.5;
+static const float FRAME_SCALE_FACTOR = 1.0;
 
 // Forward declarations.
 shared_ptr<NetworkTable> initializeNetworkTables();
@@ -45,7 +46,7 @@ void runContourDetectionPipeline(Mat const& frame,
                                  vector<vector<Point>>& hits,
                                  vector<Rect>& hitRects,
                                  vector<vector<Point>>& skips);
-void runBlobDetectionPipeline(SimpleBlobDetector const& detector,
+void runBlobDetectionPipeline(Ptr<SimpleBlobDetector> const& detector,
                               Mat const& frame,
                               vector<vector<Point>>& hits,
                               vector<Rect>& hitRects,
@@ -94,8 +95,10 @@ void keyPointToPointsAndRect(KeyPoint const& keyPoint,
 
 int main(__attribute__((unused)) int argc, char** argv)
 {
+#if DUMP_OPENCV_BUILD_INFO
 	// Dump OpenCV build info.
 	std::cout << cv::getBuildInformation() << std::endl;
+#endif
 
     cout << argv[0] << " running..." << endl;
 #if MEASURE_PERFORMANCE
@@ -184,31 +187,24 @@ int main(__attribute__((unused)) int argc, char** argv)
         TICK_ACCUMULATOR_START(network_tables);
         Point displayCenter;
         Rect displayRect;
-        if (hits.size() > 1)
+        if (hits.size() == 1)
         {
-            cout << "Hits" << endl;
+            cout << "Hit" << endl;
 
-            // Compute a rect that covers both targets.
+            // Compute the bounding rect of the target.
             vector<double> center(2, 0.0);
             vector<double> rect(4, 0.0);
-            auto left = min(hitRects[0].x, hitRects[1].x);
-            auto top = min(hitRects[0].y, hitRects[1].y);
-            auto right0 = hitRects[0].x + hitRects[0].width;
-            auto right1 = hitRects[1].x + hitRects[0].width;
-            auto right = max(right0, right1);
-            auto bottom0 = hitRects[0].y + hitRects[0].height;
-            auto bottom1 = hitRects[1].y + hitRects[0].height;
-            auto bottom = max(bottom0, bottom1);
+            auto left = hitRects[0].x;
+            auto top = hitRects[0].y;
+            auto right = hitRects[0].x + hitRects[0].width;
+            auto bottom = hitRects[0].y + hitRects[0].height;
             auto centerX = (left + right)/2;
             auto centerY = (top + bottom)/2;
 
-            // Compute the center of both targets combined.
+            // Compute a matching display rect.
             displayCenter.x = centerX;
             displayCenter.y = centerY;
-            displayRect.x = left;
-            displayRect.y = top;
-            displayRect.width = abs(right - left);
-            displayRect.height = abs(bottom - top);
+            displayRect = hitRects[0];
             double area = displayRect.width * displayRect.height;
             if (area < minArea)
             {
@@ -252,10 +248,10 @@ int main(__attribute__((unused)) int argc, char** argv)
 #if RESTREAM_VIDEO || VIEW_OUTPUT_ON_DISPLAY
         Mat detectionFrame;
         frame.copyTo(detectionFrame);
-        rectangle(detectionFrame, displayRect, Scalar(0, 255, 0), 2);
-        circle(detectionFrame, displayCenter, 4, Scalar(0, 255, 0), 2);
-        drawContours(detectionFrame, hits, -1, Scalar(0, 0, 255), 2);
-        drawContours(detectionFrame, skips, -1, Scalar(0, 0, 0), 2);
+        rectangle(detectionFrame, displayRect, Scalar(0, 255, 0), 4);	// green
+        circle(detectionFrame, displayCenter, 4, Scalar(0, 255, 0), 2);	// green
+        drawContours(detectionFrame, hits, -1, Scalar(0, 0, 255), 2);	// red
+        drawContours(detectionFrame, skips, -1, Scalar(0, 0, 0), 2);	// black
 #endif
 
 #if RESTREAM_VIDEO
@@ -303,7 +299,7 @@ shared_ptr<NetworkTable> initializeNetworkTables()
     // Change this address to the dynamically-generated
     // TCP/IP address of the computer (not roboRIO) that
     // is running a NetworkTables intance in server mode.
-    NetworkTable::SetIPAddress("169.254.25.155");
+    NetworkTable::SetIPAddress(OUTLINE_VIEWER_IP_ADDRESS);
 #endif
 
     NetworkTable::Initialize();
@@ -347,9 +343,9 @@ void runContourDetectionPipeline(Mat const& frame,
 	double filterContoursMinArea = 150.0; 
 	double filterContoursMinPerimeter = 0;          // 0.0
 	double filterContoursMinWidth = 0.0;            // 0.0
-	double filterContoursMaxWidth = 1000.0;         // 1000.0
+	double filterContoursMaxWidth = 20000.0;         // 1000.0
 	double filterContoursMinHeight = 0.0;           // 0.0
-	double filterContoursMaxHeight = 1000.;         // 1000.0
+	double filterContoursMaxHeight = 20000.;         // 1000.0
 	double filterContoursSolidity[] = {0.0, 100};
 	double filterContoursMaxVertices = 1000000;     // 1000000.0
 	double filterContoursMinVertices = 0;           // 0.0
@@ -375,7 +371,7 @@ void runContourDetectionPipeline(Mat const& frame,
     TICK_ACCUMULATOR_END(filter);
 }
 
-void runBlobDetectionPipeline(SimpleBlobDetector & detector,
+void runBlobDetectionPipeline(Ptr<SimpleBlobDetector> const& detector,
                               Mat const& frame,
                               vector<vector<Point>>& hits,
                               vector<Rect>& hitRects,
@@ -386,14 +382,14 @@ void runBlobDetectionPipeline(SimpleBlobDetector & detector,
 //    medianBlur(frame, blurredFrame, 11);
 //    TICK_ACCUMULATOR_END(blur);
     
-//    TICK_ACCUMULATOR_START(threshold);
-//    Mat thresholdFrame;
-//    threshold(frame, thresholdFrame, 200, 255, CV_THRESH_BINARY);
-//    TICK_ACCUMULATOR_END(threshold);
+    TICK_ACCUMULATOR_START(threshold);
+    Mat thresholdFrame;
+    threshold(frame, thresholdFrame, 200, 255, CV_THRESH_BINARY);
+    TICK_ACCUMULATOR_END(threshold);
 
     TICK_ACCUMULATOR_START(detect);
     vector<KeyPoint> keyPoints;
-    detector.detect(frame, keyPoints); 
+    detector->detect(frame, keyPoints); 
     TICK_ACCUMULATOR_END(detect);
 
     TICK_ACCUMULATOR_START(sort);
@@ -408,11 +404,10 @@ void runBlobDetectionPipeline(SimpleBlobDetector & detector,
 
 /**
  * Filter the keypoints looking for potential keypoints that
- * correspond to the two matching targets. Once found, the
- * target keypoints will be returns in the "hits" vector.i
- * Any keypoints skipped up until that point (because they
- * are not viable target candidates) will be returned in the
- * "skips" vector.
+ * correspond to the closest (largest) piece of retrorefledtive
+ * tape. Once found, the target keypoints will be returned
+ * in the "hits" vector. Any keypoints skipped will be
+ * returned in the "skips" vector.
  */
 void filterKeyPoints(vector<KeyPoint> const& keyPoints,
                      vector<vector<Point>>& hits,
@@ -421,55 +416,28 @@ void filterKeyPoints(vector<KeyPoint> const& keyPoints,
 {
     if (keyPoints.size() == 0)
     {
+    	// No keypoints found in frame.
         return;
     }
 
-    if (keyPoints.size() == 1)
-    {
-        vector<Point> points;
-        Rect rect;
+	// One or more keypoints were detected and, since they are sorted,
+	// return the data for the first (largest) keypoint as a hit.
+	vector<Point> hitPoints;
+	Rect hitRect;
+	keyPointToPointsAndRect(*(keyPoints.begin()), hitPoints, hitRect);
+	hits.push_back(hitPoints);
+	hitRects.push_back(hitRect);
 
-        keyPointToPointsAndRect(*(keyPoints.begin()), points, rect);
-
-        skips.push_back(points);
-        return;
-    }
-
-    for (auto iter = keyPoints.begin(); iter != keyPoints.end()-1; iter++)
-    {
-        for (auto other = iter+1; other != keyPoints.end(); other++)
-        {
-            auto avgTargetSize = ((*iter).size + (*other).size)/2;
-            auto deltaX = abs((*iter).pt.x - (*other).pt.x);
-            auto deltaY =  abs((*iter).pt.y - (*other).pt.y);
-            if ((deltaX < 9 * avgTargetSize) && (deltaX > 2 * avgTargetSize) &&
-                (deltaY < 3 * avgTargetSize))
-            {
-                vector<Point> iterPoints;
-                Rect iterRect;
-
-                keyPointToPointsAndRect(*iter, iterPoints, iterRect);
-                hits.push_back(iterPoints);
-                hitRects.push_back(iterRect);
-
-                vector<Point> otherPoints;
-                Rect otherRect;
-
-                keyPointToPointsAndRect(*other, otherPoints, otherRect);
-                hits.push_back(otherPoints);
-                hitRects.push_back(otherRect);
-
-                return;
-            }
-            else
-            {
-                vector<Point> points;
-                Rect rect;
-
-                keyPointToPointsAndRect(*iter, points, rect);
-                skips.push_back(points);
-            }
-        }   
+	// Return everything else as a skip.
+	if (keyPoints.size() > 1)
+    {	
+		for (auto iter = keyPoints.begin()+1; iter != keyPoints.end(); iter++)
+		{    
+			vector<Point> skipPoints;
+			Rect skipRect;
+			keyPointToPointsAndRect(*iter, skipPoints, skipRect);
+			skips.push_back(skipPoints);
+		}
     }
 }
 
@@ -495,13 +463,13 @@ void filterContours(vector<vector<Point>> const& contours,
     for (auto iter = contours.begin(); iter != contours.end()-1; iter++)
     {
         Rect rect = boundingRect(*iter);
-        if (rect.height < 1 * rect.width || rect.height > 4 * rect.width)
+        if (rect.height < 1 * rect.width || rect.height > 10 * rect.width)
         {
 //            cout << "Skipping contour (aspect ratio)..." << endl;
             continue;
         }
 
-        if (rect.area() > 6000)
+        if (rect.area() > 20000)
         {
 //            cout << "Skipping contour (area)..." << rect.area() << endl;
             continue;
@@ -516,7 +484,7 @@ void filterContours(vector<vector<Point>> const& contours,
                 continue;
             }
 
-            if (rectOther.area() > 6000)
+            if (rectOther.area() > 20000)
             {
 //                cout << "Skipping contour (area)..." << rect.area() << endl;
                 continue;
@@ -561,25 +529,25 @@ SimpleBlobDetector::Params getSimpleBlobDetectorParams()
     const float fsfs = FRAME_SCALE_FACTOR * FRAME_SCALE_FACTOR;
 
     SimpleBlobDetector::Params params = SimpleBlobDetector::Params();
-    params.thresholdStep = 10;              // 10
-    params.minThreshold = 50;               // 50
-    params.maxThreshold = 220;              // 220
-    params.minRepeatability = 2;            // 2
-    params.minDistBetweenBlobs = 10;        // 10
-    params.filterByColor = true;            // true
-    params.blobColor = 255;                 // 255
-    params.filterByArea = true;             // true
-    params.minArea = 1000 * fsfs;           // 1000
-    params.maxArea = 20000 * fsfs;          // INT_MAX
-    params.filterByCircularity = true;      // true
-    params.minCircularity = 0;              // 0
-    params.maxCircularity = 1;              // 1
-    params.filterByInertia = true;          // true
-    params.minInertiaRatio = 0.1;           // 0.1
-    params.maxInertiaRatio = INT_MAX;       // INT_MAX
-    params.filterByConvexity = true;        // true
-    params.minConvexity = 0.95;             // 0.95
-    params.maxConvexity = INT_MAX;          // INT_MAX
+    params.thresholdStep = 10;				// 10
+    params.minThreshold = 180;				// 180
+    params.maxThreshold = 255;				// 255
+    params.minRepeatability = 2;			// 2
+    params.minDistBetweenBlobs = 10;		// 10
+    params.filterByColor = false;			// false; possibly broken in OpenCV
+    params.blobColor = 255;					// 255
+    params.filterByArea = true;				// true
+    params.minArea = 1000 * fsfs;			// 1000
+    params.maxArea = 100000 * fsfs;			// INT_MAX
+    params.filterByCircularity = false;		// false; 1 == circle, 0.785 == square, etc.
+    params.minCircularity = 0.0;			// 0.0
+    params.maxCircularity = 0.2;			// 0.2
+    params.filterByInertia = true;			// true; 0 == line, 1 == circle
+    params.minInertiaRatio = 0.0;			// 0.0
+    params.maxInertiaRatio = 0.1;			// 0.1
+    params.filterByConvexity = true;		// true; 0 == concave; 1 == convex
+    params.minConvexity = 0.9;				// 0.9
+    params.maxConvexity = 1.0;				// 1.0
 
     return params;
 }
