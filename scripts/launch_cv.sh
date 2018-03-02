@@ -1,4 +1,4 @@
 #!/bin/sh
 
-cmd="/home/ubuntu/robot_programs/cv_track_targets"
+cmd="/home/nvidia/robot_programs/cv_track_targets"
 $cmd &

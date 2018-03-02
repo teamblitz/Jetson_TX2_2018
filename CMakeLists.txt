@@ -15,6 +15,8 @@ include_directories("libs/wpiutil/include")
 #link_directories("/home/ubuntu/projects/github/teamblitz/Jetson_TX2_2018/libs/ntcore/Linux/arm")
 #link_directories("/home/ubuntu/projects/github/teamblitz/Jetson_TX2_2018/libs/wpiutil/Linux/arm")
 
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY /home/nvidia/robot_programs)
+
 add_definitions(-std=c++11)
 
 aux_source_directory(src CV_SOURCES)

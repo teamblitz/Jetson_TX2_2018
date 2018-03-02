@@ -6,6 +6,8 @@
 #include <opencv2/highgui/highgui.hpp>
 #include <opencv2/features2d/features2d.hpp>
 #include <opencv2/video/video.hpp>
+#include <chrono>
+#include <ctime>
 #include <iostream>
 
 #include "GripPipeline.h"
@@ -17,12 +19,12 @@ using namespace llvm;
 
 // Code conditionals.                   // Defaults
 #define USE_CAMERA_INPUT            1   // 1   0 == Use test video from a file below, 1 == Use an attached video camera.
-#define CAMERA_PORT                 1   // 1   0 == Jetson TX2 On-Board Camera, 1 == USB Cameraa.
+#define CAMERA_PORT                 0   // 1   0 == Jetson TX2 On-Board Camera, 1 == USB Cameraa.
 #define RESTREAM_VIDEO              0   // 1
 #define USE_CONTOUR_DETECTION       1   // 1   0 == Simple blob detection, 1 == Contour detection.
-#define VIEW_OUTPUT_ON_DISPLAY      1   // 0
+#define VIEW_OUTPUT_ON_DISPLAY      0   // 0
 #define NON_ROBOT_NETWORK_TABLES    1   // 0
-#define OUTLINE_VIEWER_IP_ADDRESS	"10.100.196.89"
+#define OUTLINE_VIEWER_IP_ADDRESS	"10.100.196.37"
 #define DUMP_OPENCV_BUILD_INFO      0   // 0   1 == Output OpenCV build info when started.
 #define MEASURE_PERFORMANCE         1   // 0   1 == Output timing measurements when running.
 
@@ -187,6 +189,8 @@ int main(__attribute__((unused)) int argc, char** argv)
         TICK_ACCUMULATOR_START(network_tables);
         Point displayCenter;
         Rect displayRect;
+        auto now = std::chrono::system_clock::now();
+        std::time_t timeStamp = std::chrono::system_clock::to_time_t(now);
         if (hits.size() == 1)
         {
             cout << "Hit" << endl;
@@ -225,6 +229,7 @@ int main(__attribute__((unused)) int argc, char** argv)
 
             ArrayRef<double> centerArray(center);
             ArrayRef<double> rectArray(rect);
+            ttTable->PutString("timestamp", std::ctime(&timeStamp));
             ttTable->PutBoolean("tracking", true);
             ttTable->PutNumberArray("center", centerArray);
             ttTable->PutNumberArray("rect", rectArray);
@@ -234,6 +239,7 @@ int main(__attribute__((unused)) int argc, char** argv)
         {
             cout << "Miss" << endl;
 
+            ttTable->PutString("timestamp", std::ctime(&timeStamp));
             ArrayRef<double> centerArray {0, 0, 0, 0};
             ArrayRef<double> rectArray {0, 0, 0, 0};
             ttTable->PutBoolean("tracking", false);
@@ -259,8 +265,12 @@ int main(__attribute__((unused)) int argc, char** argv)
 #endif
 
 #if VIEW_OUTPUT_ON_DISPLAY
-        imshow("frame", detectionFrame);
-        waitKey(1);
+		try
+		{
+        	imshow("frame", detectionFrame);
+        	waitKey(1);
+        }
+        catch(...) {}
 #endif
         TICK_ACCUMULATOR_END(view);
     }

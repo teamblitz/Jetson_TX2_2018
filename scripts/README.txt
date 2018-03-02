@@ -1,6 +1,6 @@
 Instructions for script usage:
 
-1. Store the executable and scripts in /home/ubuntu/robot_programs/.
+1. Store the executable and scripts in ~/robot_programs/.
 
 2. Modify your crontab to launch the executable at reboot:
 
